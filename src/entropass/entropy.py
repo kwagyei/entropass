@@ -43,6 +43,14 @@ def bits(count: int) -> float:
     return math.log2(count)
 
 
-def floor_1dp(value: float) -> float:
-    """Round down to one decimal place, so displayed strength is never overstated."""
-    return math.floor(value * 10) / 10
+def floor_bits(count: int) -> float:
+    """Entropy in bits of ``count`` outcomes, rounded down to one decimal place.
+
+    Computed in exact integers, so the figure shown never overstates the true one:
+    floor(10 * log2(count)) is the bit length of count**10, minus one. Rounding a float
+    from math.log2 instead can land just above a 0.1 boundary (for example 540.0 shown
+    for a true 539.99...).
+    """
+    if count < 1:
+        raise ValueError("there are no outcomes to choose from")
+    return ((count**10).bit_length() - 1) / 10

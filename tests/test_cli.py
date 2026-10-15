@@ -1,3 +1,4 @@
+import errno
 import io
 import runpy
 import subprocess
@@ -137,30 +138,49 @@ def test_bad_options_are_usage_errors(
 class ClosedPipe(io.StringIO):
     """A stdout whose reader has gone away."""
 
-    def __init__(self, fd: int) -> None:
+    def __init__(self, fd: int, error: OSError) -> None:
         super().__init__()
         self._fd = fd
+        self._error = error
 
     def write(self, s: str) -> int:
-        raise BrokenPipeError
+        raise self._error
 
     def fileno(self) -> int:
         return self._fd
 
 
+@pytest.mark.parametrize(
+    "error",
+    [BrokenPipeError(errno.EPIPE, "Broken pipe"), OSError(errno.EINVAL, "Invalid argument")],
+    ids=["posix", "windows"],
+)
 def test_closed_pipe_fails_quietly(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    error: OSError,
 ) -> None:
     with (tmp_path / "stdout").open("w") as target:
-        monkeypatch.setattr("sys.stdout", ClosedPipe(target.fileno()))
+        monkeypatch.setattr("sys.stdout", ClosedPipe(target.fileno(), error))
         assert main(["password", "-q"]) == 1
     assert capsys.readouterr().err == ""
 
 
+def test_other_os_errors_are_not_swallowed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    with (tmp_path / "stdout").open("w") as target:
+        monkeypatch.setattr("sys.stdout", ClosedPipe(target.fileno(), OSError(errno.EIO, "I/O")))
+        with pytest.raises(OSError, match="I/O"):
+            main(["password"])
+
+
+# --help and --version are included because argparse writes them itself: the closed pipe
+# only surfaces at the final flush, which main() must also catch.
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX pipe semantics")
-def test_closed_pipe_in_a_real_process() -> None:
+@pytest.mark.parametrize("argv", [["-q", "-l", "1024"], ["--help"], ["--version"]])
+def test_closed_pipe_in_a_real_process(argv: list[str]) -> None:
     proc = subprocess.Popen(
-        [sys.executable, "-m", "entropass", "-q", "-l", "1024"],
+        [sys.executable, "-m", "entropass", *argv],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )

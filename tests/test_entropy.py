@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from entropass.entropy import bits, count_valid, floor_1dp
+from entropass.entropy import bits, count_valid, floor_bits
 
 
 def brute_force(class_sizes: list[int], required: list[bool], length: int) -> int:
@@ -74,8 +74,37 @@ def test_bits_of_nothing_is_an_error() -> None:
 
 
 @pytest.mark.parametrize(
-    ("value", "shown"),
-    [(130.92586, 130.9), (64.62, 64.6), (77.54, 77.5), (64.0, 64.0), (0.09, 0.0), (12.99, 12.9)],
+    ("count", "shown"),
+    [(2**64, 64.0), (2**64 - 1, 63.9), (7776**5, 64.6), (94**20, 131.0), (1, 0.0), (2, 1.0)],
 )
-def test_display_rounds_down_never_up(value: float, shown: float) -> None:
-    assert floor_1dp(value) == shown
+def test_display_rounds_down_never_up(count: int, shown: float) -> None:
+    assert floor_bits(count) == shown
+
+
+def is_exact_floor(shown: float, count: int) -> bool:
+    """2**(t/10) <= count < 2**((t+1)/10), checked in integers."""
+    tenths = round(shown * 10)
+    return bool(2**tenths <= count**10 < 2 ** (tenths + 1))
+
+
+def test_display_just_below_a_boundary_is_not_rounded_up() -> None:
+    # 32 symbols, two required classes of 24 and 8 (lower + digits without ambiguous
+    # characters), length 108: the true entropy is 539.99..., and float log2 says 540.0.
+    count = count_valid(32, [24, 8], 108)
+    assert count < 2**540
+    assert floor_bits(count) == 539.9
+    assert is_exact_floor(floor_bits(count), count)
+
+
+@pytest.mark.parametrize("length", range(1, 300))
+def test_display_is_the_exact_floor(length: int) -> None:
+    for alphabet, required in [(32, [24, 8]), (94, [26, 26, 10, 32]), (62, []), (16, [8, 8])]:
+        if length < len(required):
+            continue  # no valid strings, covered by its own test
+        count = count_valid(alphabet, required, length)
+        assert is_exact_floor(floor_bits(count), count)
+
+
+def test_floor_of_nothing_is_an_error() -> None:
+    with pytest.raises(ValueError):
+        floor_bits(0)

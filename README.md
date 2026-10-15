@@ -25,8 +25,8 @@ Y-HhEw6UmWqYkFcxtD!P
 ```
 
 The password is the only thing on stdout; the entropy line goes to stderr. So
-`entropass | pbcopy` or `pw=$(entropass)` captures exactly the password, and you still
-see its strength.
+`pw=$(entropass)` captures exactly the password, and you still see its strength. (A pipe
+such as `entropass | pbcopy` also gets the trailing newline.)
 
 | Option | Default | |
 |---|---|---|
@@ -51,7 +51,7 @@ because strings that miss a class can never be produced. entropass counts the va
 exactly by inclusion–exclusion over the required classes and reports `log2` of that count,
 rounded *down*. For the defaults it is 130.9 bits rather than the naive 131.0. The gap is
 small, but the number is true, and a test checks the count against brute-force enumeration
-over every small configuration.
+over a grid of small configurations.
 
 **Every valid password is equally likely.** The usual way to force one of each class is to
 place one character from each and shuffle. That is not uniform: it favours some strings

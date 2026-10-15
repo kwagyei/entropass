@@ -7,7 +7,6 @@ grid cannot reach.
 """
 
 import itertools
-import math
 import string
 import subprocess
 import sys
@@ -17,7 +16,7 @@ import pytest
 
 from entropass.charsets import AMBIGUOUS, CharClass, build_classes
 from entropass.cli import MAX_LENGTH, main
-from entropass.entropy import bits, count_valid, floor_1dp
+from entropass.entropy import count_valid, floor_bits
 from entropass.password import count_passwords, generate_password
 
 PRINTABLE = {chr(c) for c in range(33, 127)}
@@ -158,7 +157,7 @@ def test_every_punctuation_symbol_is_accepted() -> None:
 
 def expected_line(classes: list[CharClass], length: int, require: bool) -> str:
     sizes = [len(c.chars) for c in classes]
-    shown = floor_1dp(math.log2(dp_count(sizes, [require] * len(sizes), length)))
+    shown = floor_bits(dp_count(sizes, [require] * len(sizes), length))
     names = ", ".join(c.name for c in classes)
     if len(classes) == 1:
         detail = f" ({names})"
@@ -264,6 +263,8 @@ def test_output_is_ascii_and_stdout_is_exactly_the_secret(
         ["--no-require", "-l", "1"],
         ["--exclude-ambiguous", "--symbols=|!", "-l", "7"],
         ["--no-symbols", "-l", "33"],
+        # Regression: float log2 showed 540.0 bits here; the truth is 539.99...
+        ["--no-upper", "--no-symbols", "--exclude-ambiguous", "-l", "108"],
     ],
 )
 def test_displayed_bits_never_overstate(
@@ -274,12 +275,14 @@ def test_displayed_bits_never_overstate(
     length = int(argv[argv.index("-l") + 1]) if "-l" in argv else 20
     require = "--no-require" not in argv
     classes = build_classes(
+        upper="--no-upper" not in argv,
         symbols="--no-symbols" not in argv,
         symbol_chars="!" if "--symbols=|!" in argv else None,
         exclude_ambiguous="--exclude-ambiguous" in argv,
     )
-    true_bits = bits(count_passwords(classes, length, require=require))
-    assert shown <= true_bits < shown + 0.1
+    count = count_passwords(classes, length, require=require)
+    tenths = round(shown * 10)
+    assert 2**tenths <= count**10 < 2 ** (tenths + 1)  # exact, no floating point
 
 
 def test_top_level_help(capsys: pytest.CaptureFixture[str]) -> None:
@@ -340,7 +343,7 @@ def test_stray_arguments_are_exit_2(capsys: pytest.CaptureFixture[str], argv: li
 
 
 def entropass(*argv: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(  # noqa: S603 - fixed interpreter and our own module
+    return subprocess.run(
         [sys.executable, "-m", "entropass", *argv], capture_output=True, check=False
     )
 
