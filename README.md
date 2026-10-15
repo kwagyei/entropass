@@ -5,8 +5,8 @@
 A password and passphrase generator for the command line that tells you, honestly and in
 bits, how strong what it made actually is.
 
-> **Work in progress.** Passwords and passphrases work today. Clipboard copy and the PyPI
-> release land in the next pull requests; this README only describes what exists on `main`.
+> **Work in progress.** Everything below works today; the PyPI release lands next. Until
+> then, install from the repository (see below).
 
 ## Usage
 
@@ -32,6 +32,10 @@ Word 2 of 3: roll five dice and enter them (e.g. 4 1 6 2 3):
 Word 3 of 3: roll five dice and enter them (e.g. 4 1 6 2 3):
 abacus.zoom.humorous
 38.7 bits of entropy: 3 words from the EFF large wordlist (7776 words), assuming fair dice
+
+$ entropass passphrase --copy
+Copied the passphrase to the clipboard. It clears in 30 s if it still holds it.
+77.5 bits of entropy: 6 words from the EFF large wordlist (7776 words)
 ```
 
 The secret is the only thing on stdout; the entropy line goes to stderr. So
@@ -53,6 +57,16 @@ such as `entropass | pbcopy` also gets the trailing newline.)
 | `--sep TEXT` | a space | printable ASCII with no lowercase letters and no `-` (see below) |
 | `--dice` | off | use your own dice: five per word, typed without echo, or piped one roll per line |
 | `-q`, `--quiet` | off | no entropy line |
+
+Both commands also take:
+
+| Option | Default | |
+|---|---|---|
+| `-c`, `--copy` | off | copy to the clipboard instead of printing |
+| `--clear-after SECS` | 30 | then clear it, if it still holds the secret; `0` never clears |
+
+The clipboard uses the tools your system already has: `pbcopy` on macOS, `clip` and
+PowerShell on Windows, and `wl-clipboard`, `xclip` or `xsel` on Linux.
 
 Install from the repository until the PyPI release:
 
@@ -98,6 +112,14 @@ passphrase, so they are not accepted as command-line arguments, which other user
 in `ps` and which shell history keeps. On a terminal each roll is typed without echo and
 re-prompted if invalid. From a pipe a bad roll fails the run without being echoed back.
 
+**The clipboard is cleared only if it still holds the secret.** `--copy` hands the secret
+to the system's clipboard tool on stdin, never as an argument. It then starts a small
+detached process and returns at once. That process receives only the SHA-256 digest of the
+secret, never the secret itself. After the delay it reads the clipboard and clears it only
+if the digest still matches, so something you copied in the meantime is never wiped. It
+survives closing the terminal. If no clipboard is available, entropass fails rather than
+falling back to printing the secret into the scrollback.
+
 **No runtime dependencies.** The CLI is standard-library `argparse`. There is nothing to
 audit beyond this repository.
 
@@ -108,8 +130,17 @@ audit beyond this repository.
   reuse and phishing.
 - Python cannot reliably wipe strings from memory, so the password lives in the process
   until it exits.
-- A password printed to a terminal stays in its scrollback. Clipboard copy with automatic
-  clearing is coming in a later pull request.
+- A secret printed to a terminal stays in its scrollback; use `--copy` to avoid that.
+- Clipboard managers and history keep their own copies, which entropass cannot remove:
+  Windows clipboard history (Win+V) and cloud clipboard, macOS Universal Clipboard, KDE
+  Klipper, and third-party managers. The system tools have no way to mark a copy as
+  sensitive.
+- The clear runs late if the computer sleeps through the delay (it happens after waking),
+  and not at all after a restart or logout before the delay ends. A copy made in the few milliseconds between the clearer's check and its
+  clear would be lost.
+- SSH and other sessions without a graphical desktop have no clipboard, so `--copy` fails
+  there. On Wayland, desktops that don't let background programs read the clipboard (some
+  GNOME versions) will skip the clear, because the clearer cannot check what is there.
 - `--dice` entropy assumes fair dice and honest rolling; entropass cannot check either.
 - `--dice` hides typed rolls only when stdin is a real terminal. Some Windows terminals,
   such as Git Bash's mintty without winpty, do not present as one, so the rolls are then
@@ -119,7 +150,6 @@ audit beyond this repository.
 
 ## Planned
 
-- Copy to the clipboard and clear it afterwards, only if it still holds the secret.
 - Release to PyPI through GitHub Trusted Publishing.
 
 ## Development
