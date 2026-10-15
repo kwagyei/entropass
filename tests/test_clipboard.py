@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -170,6 +171,22 @@ class TestClearIfUnchanged:
         assert len(run.calls) == 1
 
 
+class ClearFails(FakeRun):
+    """Pasting works; the clearing command then fails to run."""
+
+    def __call__(self, cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        if self.calls:
+            self.calls.append((cmd, kwargs))
+            raise OSError("pbcopy vanished")
+        return super().__call__(cmd, **kwargs)
+
+
+def test_a_clear_command_that_fails_reports_not_cleared() -> None:
+    run = ClearFails(pasted=SECRET.encode())
+    assert clear_if_unchanged(MAC, SECRET_DIGEST, run=run) is False
+    assert len(run.calls) == 2
+
+
 class FakeProcess:
     def __init__(self) -> None:
         self.stdin = io.BytesIO()
@@ -223,26 +240,27 @@ class TestClearerProcess:
     def test_waits_then_clears_if_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
         slept: list[float] = []
         seen: list[tuple[Backend, str]] = []
+
+        def fake_clear(backend: Backend, expected: str, run: object = None) -> bool:
+            seen.append((backend, expected))
+            return True
+
         monkeypatch.setattr("sys.stdin", io.StringIO(SECRET_DIGEST + "\n"))
-        monkeypatch.setattr(_clearer.time, "sleep", slept.append)
-        monkeypatch.setattr(_clearer.clipboard, "detect", lambda *a: MAC)
-        monkeypatch.setattr(
-            _clearer.clipboard,
-            "clear_if_unchanged",
-            lambda backend, expected, run=None: seen.append((backend, expected)) or True,
-        )
+        monkeypatch.setattr("time.sleep", slept.append)
+        monkeypatch.setattr(clipboard, "detect", lambda *a: MAC)
+        monkeypatch.setattr(clipboard, "clear_if_unchanged", fake_clear)
         assert _clearer.main(["--after", "30"]) == 0
         assert slept == [30]
         assert seen == [(MAC, SECRET_DIGEST)]
 
     def test_no_clipboard_means_nothing_to_do(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("sys.stdin", io.StringIO(SECRET_DIGEST))
-        monkeypatch.setattr(_clearer.time, "sleep", lambda s: None)
+        monkeypatch.setattr("time.sleep", lambda s: None)
 
         def unavailable(*args: object) -> Backend:
             raise ClipboardUnavailable("none")
 
-        monkeypatch.setattr(_clearer.clipboard, "detect", unavailable)
+        monkeypatch.setattr(clipboard, "detect", unavailable)
         assert _clearer.main(["--after", "1"]) == 1
 
 
@@ -252,7 +270,7 @@ class TestClearerProcess:
     reason="uses the real clipboard; set ENTROPASS_CLIPBOARD_TESTS=1",
 )
 def test_real_clipboard_round_trip() -> None:
-    backend = clipboard.detect(sys.platform, os.environ, clipboard.shutil.which)
+    backend = clipboard.detect(sys.platform, os.environ, shutil.which)
     copy(backend, SECRET)
     spawn_clearer(1, digest(SECRET))
     deadline = time.monotonic() + 15

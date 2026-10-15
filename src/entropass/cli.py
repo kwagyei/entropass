@@ -10,10 +10,11 @@ import argparse
 import errno
 import getpass
 import os
+import shutil
 import sys
 from collections.abc import Sequence
 
-from entropass import __version__
+from entropass import __version__, clipboard
 from entropass.charsets import CharClass, build_classes
 from entropass.entropy import floor_bits
 from entropass.passphrase import (
@@ -27,6 +28,7 @@ from entropass.password import count_passwords, generate_password
 
 MAX_LENGTH = 1024
 MAX_WORDS = 100
+MAX_CLEAR_AFTER = 86400  # one day
 COMMANDS = {"password", "passphrase"}
 EFF_CREDIT = (
     "Words come from the EFF Large Wordlist for Passphrases by Joseph Bonneau and the "
@@ -56,6 +58,64 @@ def _words(value: str) -> int:
     if not 1 <= words <= MAX_WORDS:
         raise argparse.ArgumentTypeError(f"words must be between 1 and {MAX_WORDS}")
     return words
+
+
+def _seconds(value: str) -> int:
+    try:
+        seconds = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"must be a whole number of seconds, not {value!r}"
+        ) from None
+    if not 0 <= seconds <= MAX_CLEAR_AFTER:
+        raise argparse.ArgumentTypeError(f"must be between 0 and {MAX_CLEAR_AFTER} seconds")
+    return seconds
+
+
+def _deliver(args: argparse.Namespace, secret: str, entropy_line: str) -> int:
+    """Print the secret on stdout, or copy it with --copy; then the entropy line on stderr."""
+    if not args.copy:
+        print(secret)
+        if not args.quiet:
+            print(entropy_line, file=sys.stderr)
+        return 0
+
+    # With --copy the secret is never printed, not even when copying fails: printing it
+    # would leave it in the terminal's scrollback, which is what --copy avoids.
+    try:
+        backend = clipboard.detect(sys.platform, os.environ, shutil.which)
+        clipboard.copy(backend, secret)
+    except clipboard.ClipboardUnavailable as exc:
+        print(f"entropass: error: {exc}", file=sys.stderr)
+        return 1
+    if args.clear_after:
+        clipboard.spawn_clearer(args.clear_after, clipboard.digest(secret))
+    if not args.quiet:
+        if args.clear_after:
+            when = f"It clears in {args.clear_after} s if it still holds it."
+        else:
+            when = "It will not be cleared."
+        print(f"Copied the {args.command} to the clipboard. {when}", file=sys.stderr)
+        print(entropy_line, file=sys.stderr)
+    return 0
+
+
+def _add_output_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-c",
+        "--copy",
+        action="store_true",
+        help="copy to the clipboard instead of printing, and clear it later",
+    )
+    parser.add_argument(
+        "--clear-after",
+        type=_seconds,
+        default=30,
+        metavar="SECS",
+        help="with --copy, clear the clipboard after this many seconds if it still holds "
+        "the secret; 0 never clears (default: 30)",
+    )
+    parser.add_argument("-q", "--quiet", action="store_true", help="do not print the entropy line")
 
 
 def describe(shown: float, length: int, classes: Sequence[CharClass], *, require: bool) -> str:
@@ -89,11 +149,8 @@ def _password(args: argparse.Namespace) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    print(password)
-    if not args.quiet:
-        shown = floor_bits(count_passwords(classes, args.length, require=args.require))
-        print(describe(shown, args.length, classes, require=args.require), file=sys.stderr)
-    return 0
+    shown = floor_bits(count_passwords(classes, args.length, require=args.require))
+    return _deliver(args, password, describe(shown, args.length, classes, require=args.require))
 
 
 def _read_rolls(count: int) -> list[int]:
@@ -151,17 +208,15 @@ def _passphrase(args: argparse.Namespace) -> int:
     else:
         words = generate_passphrase(args.words)
 
-    print(args.sep.join(words))
-    if not args.quiet:
-        shown = floor_bits(WORDLIST_SIZE**args.words)
-        noun = "word" if args.words == 1 else "words"
-        fair = ", assuming fair dice" if args.dice else ""
-        print(
-            f"{shown:.1f} bits of entropy: {args.words} {noun} from the EFF large wordlist "
-            f"({WORDLIST_SIZE} words){fair}",
-            file=sys.stderr,
-        )
-    return 0
+    shown = floor_bits(WORDLIST_SIZE**args.words)
+    noun = "word" if args.words == 1 else "words"
+    fair = ", assuming fair dice" if args.dice else ""
+    return _deliver(
+        args,
+        args.sep.join(words),
+        f"{shown:.1f} bits of entropy: {args.words} {noun} from the EFF large wordlist "
+        f"({WORDLIST_SIZE} words){fair}",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -202,7 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="allow passwords that miss a class (by default each class appears at least once)",
     )
-    pw.add_argument("-q", "--quiet", action="store_true", help="do not print the entropy line")
+    _add_output_options(pw)
     pw.set_defaults(run=_password, parser=pw)
 
     pp = commands.add_parser(
@@ -222,7 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="use your own rolls of five dice per word instead of the computer's randomness",
     )
-    pp.add_argument("-q", "--quiet", action="store_true", help="do not print the entropy line")
+    _add_output_options(pp)
     pp.set_defaults(run=_passphrase, parser=pp)
     return parser
 

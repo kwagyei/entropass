@@ -42,7 +42,12 @@ wheel fails the tests. Reinstall with `pip install .` after changing `src/`.
   bytes) with a SHA-256 pin; separators may not contain any word character, default a
   space (four words contain hyphens). Licence metadata `"MIT AND CC-BY-4.0"`: EFF licenses
   its original material CC BY 4.0 (eff.org/copyright).
-- Exit codes: 0 ok, 1 bad run-time input (dice) or closed pipe, 2 bad options.
+- Exit codes: 0 ok, 1 bad run-time input (dice), no clipboard or closed pipe, 130 Ctrl-C,
+  2 bad options.
+- With `--copy` the secret is never printed, even if copying fails.
+- Clipboard tests fake every OS tool; the one real round trip (`-m clipboard`) runs only
+  with `ENTROPASS_CLIPBOARD_TESTS=1`, set on the macOS CI runners. Don't run it on
+  Kwabena's Mac: it overwrites his clipboard.
 - Clipboard via OS tools on stdin; a detached `python -m entropass._clearer` holds only a
   SHA-256 digest and clears only if the clipboard is unchanged.
 - Releases: `v*` tag → TestPyPI → PyPI after manual approval, Trusted Publishing, no tokens.

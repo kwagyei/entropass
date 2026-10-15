@@ -51,6 +51,10 @@ jobs:
           python -m pip install --group dev
           python -m pip install .
       - run: python -m pytest --cov
+        env:
+          # macOS runners have a real pasteboard: exercise copy and the detached clearer
+          # end to end there. Elsewhere the clipboard tools are faked.
+          ENTROPASS_CLIPBOARD_TESTS: ${{ runner.os == 'macOS' && '1' || '0' }}
 
   package:
     name: Build and smoke-test the wheel
