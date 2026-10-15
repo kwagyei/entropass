@@ -133,8 +133,8 @@ audit beyond this repository.
   Klipper, and third-party managers. The system tools have no way to mark a copy as
   sensitive.
 - The clear runs late if the computer sleeps through the delay (it happens after waking),
-  and not at all after a restart or logout before the delay ends. A copy made in the few milliseconds between the clearer's check and its
-  clear would be lost.
+  and not at all after a restart or logout before the delay ends. A copy made in the few
+  milliseconds between the clearer's check and its clear would be lost.
 - SSH and other sessions without a graphical desktop have no clipboard, so `--copy` fails
   there. On Wayland, desktops that don't let background programs read the clipboard (some
   GNOME versions) will skip the clear, because the clearer cannot check what is there.
@@ -145,9 +145,12 @@ audit beyond this repository.
 - Only printable ASCII is supported. That is deliberate: it survives every console encoding
   and every password form.
 
-## Planned
+## Possible future work
 
-- Release to PyPI through GitHub Trusted Publishing.
+- A `--bits` target: choose the length or word count that reaches a given strength.
+- Several secrets in one run, and JSON output for scripts.
+- Custom wordlists, with the same exact-entropy guarantee.
+- Native clipboard APIs that can mark a copy as sensitive, so clipboard history skips it.
 
 ## Development
 
@@ -168,7 +171,7 @@ Bump `version` in `pyproject.toml` in a pull request, merge it, then tag that co
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-[`release.yml`](.github/workflows/release.yml) then:
+[`release.yml`](https://github.com/kwagyei/entropass/blob/main/.github/workflows/release.yml) then:
 1. builds the package once and checks that the tag matches the version;
 2. publishes it to TestPyPI;
 3. installs it back from TestPyPI and runs it;
