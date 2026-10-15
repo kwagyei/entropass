@@ -281,7 +281,6 @@ class TestDice:
     def test_terminal_rolls_are_read_without_echo_and_reprompted(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
         monkeypatch.setattr("sys.stdin", _Tty())
         answers = iter(["66666", "7", "11111"])
         prompts: list[str] = []
@@ -296,6 +295,41 @@ class TestDice:
         assert prompts[0].startswith("Word 1 of 2")
         assert prompts[1] == prompts[2] and prompts[1].startswith("Word 2 of 2")
         assert "five dice" in err and "7\n" not in err
+
+    @pytest.mark.parametrize(
+        ("raised", "code", "message"),
+        [(EOFError, 1, "no roll entered"), (KeyboardInterrupt, 130, "")],
+        ids=["ctrl-d", "ctrl-c"],
+    )
+    def test_terminal_quit_exits_without_a_traceback(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        raised: type[BaseException],
+        code: int,
+        message: str,
+    ) -> None:
+        monkeypatch.setattr("sys.stdin", _Tty())
+
+        def quit_prompt(prompt: str = "") -> str:
+            raise raised
+
+        monkeypatch.setattr("entropass.cli.getpass.getpass", quit_prompt)
+        result, out, err = run(capsys, "passphrase", "--dice")
+        assert result == code and out == ""
+        assert message in err and "Traceback" not in err
+
+    def test_piped_bytes_that_are_not_text(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        class Undecodable(io.StringIO):
+            def read(self, size: int | None = -1) -> str:
+                raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+        monkeypatch.setattr("sys.stdin", Undecodable())
+        code, out, err = run(capsys, "passphrase", "--dice", "-w", "1")
+        assert code == 1 and out == ""
+        assert "could not be read as text" in err
 
 
 class _Tty(io.StringIO):

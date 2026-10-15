@@ -98,19 +98,30 @@ def _password(args: argparse.Namespace) -> int:
 
 def _read_rolls(count: int) -> list[int]:
     """Read one roll of five dice per word. The rolls are the passphrase: never echo them."""
+    if sys.stdin is None:  # started with stdin closed, e.g. `entropass passphrase --dice <&-`
+        raise InputError("there is no input to read the rolls from")
     if sys.stdin.isatty():
         rolls = []
         for n in range(1, count + 1):
             prompt = f"Word {n} of {count}: roll five dice and enter them (e.g. 4 1 6 2 3): "
             while True:
                 try:
-                    rolls.append(parse_roll(getpass.getpass(prompt)))
+                    text = getpass.getpass(prompt)
+                except EOFError:
+                    print(file=sys.stderr)  # end the prompt line before the error
+                    raise InputError("no roll entered") from None
+                try:
+                    rolls.append(parse_roll(text))
                     break
                 except ValueError as exc:
                     print(exc, file=sys.stderr)
         return rolls
 
-    lines = [line for line in sys.stdin.read().splitlines() if line.strip()]
+    try:
+        piped = sys.stdin.read()
+    except UnicodeDecodeError:
+        raise InputError("the rolls could not be read as text") from None
+    lines = [line for line in piped.splitlines() if line.strip()]
     if len(lines) != count:
         raise InputError(f"expected {count} rolls, one per line, but read {len(lines)}")
     rolls = []
@@ -204,7 +215,7 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument(
         "--sep",
         default=" ",
-        help="text between words (default: a space); it may not contain letters or -",
+        help="text between words (default: a space); no lowercase letters and no -",
     )
     pp.add_argument(
         "--dice",
@@ -221,6 +232,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         try:
             return _dispatch(argv)
+        except KeyboardInterrupt:
+            print(file=sys.stderr)  # end the prompt line the user interrupted
+            return 130
         finally:
             # Flush here, inside the handler, rather than at interpreter exit. This also
             # covers --help, --version and usage errors, which leave through SystemExit.

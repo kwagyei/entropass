@@ -50,7 +50,7 @@ such as `entropass | pbcopy` also gets the trailing newline.)
 | `passphrase` option | Default | |
 |---|---|---|
 | `-w`, `--words N` | 6 | 1 to 100; each word adds 12.9 bits |
-| `--sep TEXT` | a space | printable ASCII with no letters and no `-` (see below) |
+| `--sep TEXT` | a space | printable ASCII with no lowercase letters and no `-` (see below) |
 | `--dice` | off | use your own dice: five per word, typed without echo, or piped one roll per line |
 | `-q`, `--quiet` | off | no entropy line |
 
@@ -111,6 +111,9 @@ audit beyond this repository.
 - A password printed to a terminal stays in its scrollback. Clipboard copy with automatic
   clearing is coming in a later pull request.
 - `--dice` entropy assumes fair dice and honest rolling; entropass cannot check either.
+- `--dice` hides typed rolls only when stdin is a real terminal. Some Windows terminals,
+  such as Git Bash's mintty without winpty, do not present as one, so the rolls are then
+  read as piped input, with echo on and no prompts. Use PowerShell or cmd there.
 - Only printable ASCII is supported. That is deliberate: it survives every console encoding
   and every password form.
 

@@ -32,8 +32,12 @@ def generate_passphrase(
 
 
 def parse_roll(text: str) -> int:
-    """Turn a roll of five dice ("41623", "4 1 6 2 3" or "4,1,6,2,3") into a word index."""
-    digits = text.strip().replace(" ", "").replace(",", "")
+    """Turn a roll of five dice into a word index.
+
+    "41623", "4 1 6 2 3" and "4,1,6,2,3" are all accepted: ASCII whitespace and commas are
+    ignored. Anything else, including non-ASCII digits and spaces, is rejected.
+    """
+    digits = "".join(ch for ch in text if ch not in " \t\r\n,")
     if len(digits) != DICE_PER_WORD or not set(digits) <= set(_DIE_FACES):
         raise ValueError("a roll is five dice, each 1 to 6, for example 41623")
     index = 0

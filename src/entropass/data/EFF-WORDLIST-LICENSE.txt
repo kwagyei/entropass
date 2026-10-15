@@ -5,6 +5,9 @@ by Joseph Bonneau and the Electronic Frontier Foundation
 published at https://www.eff.org/dice
 downloaded from https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
 
+Copyright Electronic Frontier Foundation. Provided as-is, without warranties; see the
+licence for its disclaimer.
+
 It is included unmodified (SHA-256
 addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e).
 

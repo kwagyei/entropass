@@ -60,6 +60,7 @@ class TestParseRoll:
             ("1 1 1 1 2", 1),
             ("  2 1 1 1 1\n", 1296),
             ("6,6,6,6,5", 7774),
+            ("1\t1\t1\t1\t2\r\n", 1),
         ],
     )
     def test_valid_rolls(self, text: str, index: int) -> None:
