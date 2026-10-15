@@ -55,6 +55,11 @@ def test_bare_command_prints_a_default_password(capsys: pytest.CaptureFixture[st
     assert "bits" in err
 
 
+def test_options_without_a_command_go_to_password(capsys: pytest.CaptureFixture[str]) -> None:
+    code, out, _ = run(capsys, "-l", "12", "-q")
+    assert code == 0 and len(out.rstrip("\n")) == 12
+
+
 def test_stdout_holds_only_the_secret(capsys: pytest.CaptureFixture[str]) -> None:
     code, out, err = run(capsys, "password", "-l", "32")
     assert code == 0
@@ -93,8 +98,7 @@ def test_options_reach_the_generator(capsys: pytest.CaptureFixture[str]) -> None
         "40",
         "--no-upper",
         "--no-digits",
-        "--symbols",
-        "-_",
+        "--symbols=-_",
         "--exclude-ambiguous",
     )
     password = out.rstrip("\n")
