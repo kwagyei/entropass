@@ -50,4 +50,9 @@ wheel fails the tests. Reinstall with `pip install .` after changing `src/`.
   Kwabena's Mac: it overwrites his clipboard.
 - Clipboard via OS tools on stdin; a detached `python -m entropass._clearer` holds only a
   SHA-256 digest and clears only if the clipboard is unchanged.
-- Releases: `v*` tag → TestPyPI → PyPI after manual approval, Trusted Publishing, no tokens.
+- Releases: `v*` tag → TestPyPI → install back from TestPyPI → PyPI after Kwabena approves
+  the `pypi` environment → GitHub release. Trusted Publishing, no tokens. Environments
+  `testpypi`/`pypi` only accept `v*` tags. Actions are pinned by SHA (version in a comment);
+  no Dependabot, because its commits would land on `main`.
+- `main` has a ruleset: PR required, all 17 CI checks required, merge commits only, no
+  force-push or deletion.
