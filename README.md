@@ -30,4 +30,4 @@ python3 -m venv .venv
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/kwagyei/entropass/blob/main/LICENSE).
