@@ -17,3 +17,12 @@ htmlcov/
 # Local
 .env
 .DS_Store
+.coverage.*
+coverage.xml
+.hypothesis/
+.tox/
+.nox/
+
+# Editors
+.idea/
+.vscode/
