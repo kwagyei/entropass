@@ -1,12 +1,15 @@
 # entropass
 
 [![CI](https://github.com/kwagyei/entropass/actions/workflows/ci.yml/badge.svg)](https://github.com/kwagyei/entropass/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/entropass)](https://pypi.org/project/entropass/)
+[![Python](https://img.shields.io/pypi/pyversions/entropass)](https://pypi.org/project/entropass/)
 
 A password and passphrase generator for the command line that tells you, honestly and in
 bits, how strong what it made actually is.
 
-> **Work in progress.** Everything below works today; the PyPI release lands next. Until
-> then, install from the repository (see below).
+```sh
+pipx install entropass        # or: pip install entropass
+```
 
 ## Usage
 
@@ -67,12 +70,6 @@ Both commands also take:
 
 The clipboard uses the tools your system already has: `pbcopy` on macOS, `clip` and
 PowerShell on Windows, and `wl-clipboard`, `xclip` or `xsel` on Linux.
-
-Install from the repository until the PyPI release:
-
-```sh
-pipx install git+https://github.com/kwagyei/entropass
-```
 
 ## Design decisions
 
