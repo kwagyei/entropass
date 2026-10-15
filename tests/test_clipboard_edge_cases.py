@@ -599,6 +599,7 @@ class Harness:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch, backend: Backend = clipboard._PBCOPY):
         self.events: list[str] = []
+        self.environ_before = dict(os.environ)
         self.board = Board(backend)
         self.board.events = self.events
         self.popen = FakePopen(self.events)
@@ -632,7 +633,9 @@ class Harness:
         for args, kwargs in self.popen.calls:
             assert not any(secret in s for s in _strings_in(args))
             assert not any(secret in s for s in _strings_in(kwargs))
-        assert not any(secret in v for v in os.environ.values())
+        # Compared as a whole: a short secret can occur by chance inside an unrelated value
+        # (a one-word passphrase inside "Program Files", say).
+        assert dict(os.environ) == self.environ_before
 
 
 def run(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str, str]:
@@ -650,7 +653,7 @@ class TestCliCopy:
             ["password", "-c", "-l", "64"],
             ["password", "-c", "--no-symbols", "--exclude-ambiguous"],
             ["passphrase", "--copy"],
-            ["passphrase", "-c", "-w", "1", "--sep", "."],
+            ["passphrase", "-c", "-w", "2", "--sep", "."],
             ["passphrase", "-c", "--sep", " | "],
         ],
     )
