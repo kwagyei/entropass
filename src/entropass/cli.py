@@ -28,6 +28,7 @@ from entropass.password import count_passwords, generate_password
 
 MAX_LENGTH = 1024
 MAX_WORDS = 100
+DEFAULT_CLEAR_AFTER = 30
 MAX_CLEAR_AFTER = 86400  # one day
 COMMANDS = {"password", "passphrase"}
 EFF_CREDIT = (
@@ -74,6 +75,10 @@ def _seconds(value: str) -> int:
 
 def _deliver(args: argparse.Namespace, secret: str, entropy_line: str) -> int:
     """Print the secret on stdout, or copy it with --copy; then the entropy line on stderr."""
+    if args.clear_after is not None and not args.copy:
+        args.parser.error("--clear-after only applies with --copy")
+    if args.clear_after is None:
+        args.clear_after = DEFAULT_CLEAR_AFTER
     if not args.copy:
         print(secret)
         if not args.quiet:
@@ -89,7 +94,15 @@ def _deliver(args: argparse.Namespace, secret: str, entropy_line: str) -> int:
         print(f"entropass: error: {exc}", file=sys.stderr)
         return 1
     if args.clear_after:
-        clipboard.spawn_clearer(args.clear_after, clipboard.digest(secret))
+        try:
+            clipboard.spawn_clearer(args.clear_after, clipboard.digest(secret))
+        except OSError:
+            print(
+                f"entropass: error: copied the {args.command}, but could not start the "
+                "process that clears it; clear the clipboard yourself",
+                file=sys.stderr,
+            )
+            return 1
     if not args.quiet:
         if args.clear_after:
             when = f"It clears in {args.clear_after} s if it still holds it."
@@ -110,10 +123,9 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--clear-after",
         type=_seconds,
-        default=30,
         metavar="SECS",
         help="with --copy, clear the clipboard after this many seconds if it still holds "
-        "the secret; 0 never clears (default: 30)",
+        f"the secret; 0 never clears (default: {DEFAULT_CLEAR_AFTER})",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="do not print the entropy line")
 

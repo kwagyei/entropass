@@ -12,15 +12,18 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 Run = Callable[..., "subprocess.CompletedProcess[bytes]"]
 Which = Callable[[str], "str | None"]
 
+# The directory that contains the installed `entropass` package (site-packages).
+PACKAGE_ROOT = str(Path(__file__).resolve().parent.parent)
+
 TIMEOUT = 10  # seconds; a clipboard tool that hangs longer than this has failed
 
 # Windows process-creation flags, spelled out because subprocess only defines them there.
-_DETACHED_PROCESS = 0x00000008
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _CREATE_NO_WINDOW = 0x08000000
 
@@ -80,7 +83,9 @@ def detect(platform: str, env: Mapping[str, str], which: Which) -> Backend:
             for backend in (_XCLIP, _XSEL):
                 if available(backend):
                     return backend
-        if wayland and not x11:
+        if wayland and x11:
+            raise ClipboardUnavailable("install wl-clipboard, xclip or xsel to use the clipboard")
+        if wayland:
             raise ClipboardUnavailable("install wl-clipboard to use the clipboard")
         raise ClipboardUnavailable("install xclip or xsel to use the clipboard")
     raise ClipboardUnavailable(f"the clipboard is not supported on {platform}")
@@ -165,16 +170,25 @@ def spawn_clearer(
     """Start a detached process that clears the clipboard after ``after`` seconds.
 
     It receives only the digest of the secret, on stdin, and is detached so that it
-    survives the terminal closing while the CLI returns at once.
+    survives the terminal closing while the CLI returns at once. Raises OSError if it
+    cannot be started.
+
+    It runs from the installed package's own directory, not the user's: `python -m`
+    puts the working directory first on sys.path, so a `time.py` or `entropass/` where
+    the user happened to run the command would otherwise be imported by the clearer.
     """
     kwargs: dict[str, Any] = {
         "stdin": subprocess.PIPE,
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
         "close_fds": True,
+        "cwd": PACKAGE_ROOT,
     }
     if platform == "win32":
-        kwargs["creationflags"] = _DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP
+        # A hidden console of its own, apart from the terminal's. DETACHED_PROCESS would
+        # leave a venv's python.exe redirector without one, and its child would open a
+        # visible console window.
+        kwargs["creationflags"] = _CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
     process = popen([sys.executable, "-m", "entropass._clearer", "--after", str(after)], **kwargs)

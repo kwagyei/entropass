@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -218,6 +219,12 @@ class TestSpawnClearer:
         assert popen.kwargs["stdin"] == subprocess.PIPE
         assert popen.kwargs["stdout"] == popen.kwargs["stderr"] == subprocess.DEVNULL
 
+    def test_runs_from_the_package_not_the_users_directory(self) -> None:
+        popen = FakePopen()
+        spawn_clearer(5, SECRET_DIGEST, platform="linux", popen=popen)
+        assert popen.kwargs["cwd"] == clipboard.PACKAGE_ROOT
+        assert (Path(clipboard.PACKAGE_ROOT) / "entropass" / "_clearer.py").is_file()
+
     def test_posix_clearer_outlives_the_terminal(self) -> None:
         popen = FakePopen()
         spawn_clearer(5, SECRET_DIGEST, platform="linux", popen=popen)
@@ -227,8 +234,8 @@ class TestSpawnClearer:
     def test_windows_clearer_is_detached(self) -> None:
         popen = FakePopen()
         spawn_clearer(5, SECRET_DIGEST, platform="win32", popen=popen)
-        detached, new_group = 0x00000008, 0x00000200
-        assert popen.kwargs["creationflags"] == detached | new_group
+        no_window, new_group = 0x08000000, 0x00000200
+        assert popen.kwargs["creationflags"] == no_window | new_group
         assert "start_new_session" not in popen.kwargs
 
 
@@ -264,19 +271,40 @@ class TestClearerProcess:
         assert _clearer.main(["--after", "1"]) == 1
 
 
-@pytest.mark.clipboard
-@pytest.mark.skipif(
+real_clipboard = pytest.mark.skipif(
     os.environ.get("ENTROPASS_CLIPBOARD_TESTS") != "1",
     reason="uses the real clipboard; set ENTROPASS_CLIPBOARD_TESTS=1",
 )
-def test_real_clipboard_round_trip() -> None:
+
+
+def wait_for(backend: Backend, expected: str, seconds: float = 15) -> str | None:
+    deadline = time.monotonic() + seconds
+    while (pasted := clipboard.read(backend)) != expected and time.monotonic() < deadline:
+        time.sleep(0.25)
+    return pasted
+
+
+@pytest.mark.clipboard
+@real_clipboard
+def test_real_copy_then_clear_through_the_cli(capsys: pytest.CaptureFixture[str]) -> None:
+    from entropass.cli import main
+
+    backend = clipboard.detect(sys.platform, os.environ, shutil.which)
+    assert main(["password", "--copy", "--clear-after", "2", "-q"]) == 0
+    copied = clipboard.read(backend)
+    assert copied and len(copied) == 20  # the password really reached the clipboard
+    assert capsys.readouterr().out == ""
+    assert wait_for(backend, "") == ""
+
+
+@pytest.mark.clipboard
+@real_clipboard
+def test_real_clear_leaves_a_newer_copy_alone() -> None:
     backend = clipboard.detect(sys.platform, os.environ, shutil.which)
     copy(backend, SECRET)
-    spawn_clearer(1, digest(SECRET))
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        pasted = clipboard.read(backend)
-        if pasted == "":
-            break
-        time.sleep(0.25)
-    assert clipboard.read(backend) == ""
+    assert clipboard.read(backend) == SECRET
+    spawn_clearer(2, digest(SECRET))
+    copy(backend, "copied by the user afterwards")
+    time.sleep(5)
+    assert clipboard.read(backend) == "copied by the user afterwards"
+    copy(backend, "")

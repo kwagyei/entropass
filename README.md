@@ -135,11 +135,12 @@ audit beyond this repository.
   Windows clipboard history (Win+V) and cloud clipboard, macOS Universal Clipboard, KDE
   Klipper, and third-party managers. The system tools have no way to mark a copy as
   sensitive.
-- The clear does not happen if the computer sleeps through, restarts or logs out before the
-  delay ends. A copy made in the few milliseconds between the clearer's check and its
+- The clear runs late if the computer sleeps through the delay (it happens after waking),
+  and not at all after a restart or logout before the delay ends. A copy made in the few milliseconds between the clearer's check and its
   clear would be lost.
 - SSH and other sessions without a graphical desktop have no clipboard, so `--copy` fails
-  there.
+  there. On Wayland, desktops that don't let background programs read the clipboard (some
+  GNOME versions) will skip the clear, because the clearer cannot check what is there.
 - `--dice` entropy assumes fair dice and honest rolling; entropass cannot check either.
 - `--dice` hides typed rolls only when stdin is a real terminal. Some Windows terminals,
   such as Git Bash's mintty without winpty, do not present as one, so the rolls are then
