@@ -7,11 +7,12 @@ stdout carries the secret and nothing else; the entropy summary goes to stderr, 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 
 from entropass import __version__
-from entropass.charsets import build_classes
+from entropass.charsets import CharClass, build_classes
 from entropass.entropy import bits, floor_1dp
 from entropass.password import count_passwords, generate_password
 
@@ -27,6 +28,22 @@ def _length(value: str) -> int:
     if not 1 <= length <= MAX_LENGTH:
         raise argparse.ArgumentTypeError(f"length must be between 1 and {MAX_LENGTH}")
     return length
+
+
+def describe(shown: float, length: int, classes: Sequence[CharClass], *, require: bool) -> str:
+    """The entropy line printed on stderr."""
+    alphabet = sum(len(c.chars) for c in classes)
+    names = ", ".join(c.name for c in classes)
+    if len(classes) == 1:
+        detail = f" ({names})"
+    elif require:
+        detail = f", with at least one each of {names}"
+    else:
+        detail = f" ({names}, none required)"
+    chars = "character" if length == 1 else "characters"
+    return (
+        f"{shown:.1f} bits of entropy: {length} {chars} from a {alphabet}-symbol alphabet{detail}"
+    )
 
 
 def _password(args: argparse.Namespace) -> int:
@@ -47,16 +64,7 @@ def _password(args: argparse.Namespace) -> int:
     print(password)
     if not args.quiet:
         shown = floor_1dp(bits(count_passwords(classes, args.length, require=args.require)))
-        alphabet = sum(len(c.chars) for c in classes)
-        names = ", ".join(c.name for c in classes)
-        detail = (
-            f", with at least one each of {names}" if args.require else f" ({names}, none required)"
-        )
-        print(
-            f"{shown:.1f} bits of entropy: {args.length} characters "
-            f"from a {alphabet}-symbol alphabet{detail}",
-            file=sys.stderr,
-        )
+        print(describe(shown, args.length, classes, require=args.require), file=sys.stderr)
     return 0
 
 
@@ -64,8 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="entropass",
         description=(
-            "Generate passwords and passphrases with secrets, "
-            "and report their strength honestly, in bits."
+            "Generate passwords with secrets, and report their strength honestly, in bits."
         ),
         epilog="Without a command, entropass runs `password` with any options given.",
     )
@@ -113,5 +120,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not argv or argv[0] not in COMMANDS | {"-h", "--help", "--version"}:
         argv = ["password", *argv]
     args = parser.parse_args(argv)
-    code: int = args.run(args)
+    try:
+        code: int = args.run(args)
+        sys.stdout.flush()
+    except BrokenPipeError:
+        # The reader went away (`entropass | head -c 8`). Point stdout at devnull so the
+        # interpreter's final flush cannot raise again, and fail without a traceback.
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        return 1
     return code

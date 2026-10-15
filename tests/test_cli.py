@@ -1,5 +1,9 @@
+import io
 import runpy
+import subprocess
+import sys
 from importlib.metadata import version
+from pathlib import Path
 
 import pytest
 
@@ -128,3 +132,40 @@ def test_bad_options_are_usage_errors(
     assert exc.value.code == 2
     assert out == ""
     assert message in err
+
+
+class ClosedPipe(io.StringIO):
+    """A stdout whose reader has gone away."""
+
+    def __init__(self, fd: int) -> None:
+        super().__init__()
+        self._fd = fd
+
+    def write(self, s: str) -> int:
+        raise BrokenPipeError
+
+    def fileno(self) -> int:
+        return self._fd
+
+
+def test_closed_pipe_fails_quietly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with (tmp_path / "stdout").open("w") as target:
+        monkeypatch.setattr("sys.stdout", ClosedPipe(target.fileno()))
+        assert main(["password", "-q"]) == 1
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX pipe semantics")
+def test_closed_pipe_in_a_real_process() -> None:
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "entropass", "-q", "-l", "1024"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert proc.stdout is not None and proc.stderr is not None
+    proc.stdout.close()
+    err = proc.stderr.read()
+    assert proc.wait(timeout=30) == 1
+    assert err == b""
