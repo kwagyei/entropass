@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import entropass
+from entropass import clipboard
 from entropass.cli import main
 
 # The version recorded in the installed package's metadata, independent of entropass.__version__.
@@ -335,3 +336,93 @@ class TestDice:
 class _Tty(io.StringIO):
     def isatty(self) -> bool:
         return True
+
+
+class FakeClipboard:
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, *, available: bool = True) -> None:
+        self.copied: list[str] = []
+        self.spawned: list[tuple[int, str]] = []
+        backend = clipboard.Backend("fake", copy_cmd=("fake-copy",), paste_cmd=("fake-paste",))
+
+        def detect(*args: object) -> clipboard.Backend:
+            if not available:
+                raise clipboard.ClipboardUnavailable("install xclip or xsel")
+            return backend
+
+        def copy(b: clipboard.Backend, secret: str, run: object = None) -> None:
+            self.copied.append(secret)
+
+        def spawn(after: int, secret_digest: str, **kwargs: object) -> None:
+            self.spawned.append((after, secret_digest))
+
+        monkeypatch.setattr(clipboard, "detect", detect)
+        monkeypatch.setattr(clipboard, "copy", copy)
+        monkeypatch.setattr(clipboard, "spawn_clearer", spawn)
+
+
+class TestCopy:
+    @pytest.mark.parametrize("command", ["password", "passphrase"])
+    def test_copy_instead_of_printing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str
+    ) -> None:
+        board = FakeClipboard(monkeypatch)
+        code, out, err = run(capsys, command, "--copy")
+        assert code == 0 and out == ""
+        [secret] = board.copied
+        assert board.spawned == [(30, clipboard.digest(secret))]
+        assert secret not in err
+        assert f"Copied the {command} to the clipboard" in err
+        assert "clears in 30 s if it still holds it" in err
+        assert "bits of entropy" in err
+
+    def test_short_flag_and_custom_delay(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        board = FakeClipboard(monkeypatch)
+        code, _, err = run(capsys, "-c", "--clear-after", "5")
+        assert code == 0 and board.spawned[0][0] == 5
+        assert "clears in 5 s" in err
+
+    def test_clear_after_zero_never_clears(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        board = FakeClipboard(monkeypatch)
+        _, _, err = run(capsys, "password", "--copy", "--clear-after", "0")
+        assert board.copied and board.spawned == []
+        assert "will not be cleared" in err
+
+    def test_quiet_copy_prints_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        board = FakeClipboard(monkeypatch)
+        code, out, err = run(capsys, "passphrase", "-c", "-q")
+        assert code == 0 and out == err == "" and board.copied
+
+    def test_no_clipboard_fails_without_printing_the_secret(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        FakeClipboard(monkeypatch, available=False)
+        code, out, err = run(capsys, "password", "--copy")
+        assert code == 1 and out == ""
+        assert "entropass: error:" in err and "install xclip or xsel" in err
+        assert "bits" not in err
+
+    def test_copy_failure_fails_without_printing_the_secret(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        board = FakeClipboard(monkeypatch)
+
+        def broken(*args: object, **kwargs: object) -> None:
+            raise clipboard.ClipboardUnavailable("could not copy with fake-copy")
+
+        monkeypatch.setattr(clipboard, "copy", broken)
+        code, out, err = run(capsys, "password", "--copy")
+        assert code == 1 and out == "" and "could not copy" in err
+        assert board.spawned == []
+
+    @pytest.mark.parametrize("value", ["-1", "86401", "soon"])
+    def test_clear_after_bounds(self, capsys: pytest.CaptureFixture[str], value: str) -> None:
+        with pytest.raises(SystemExit) as exc:
+            main(["password", "--copy", "--clear-after", value])
+        assert exc.value.code == 2
+        assert "clear-after" in capsys.readouterr().err
