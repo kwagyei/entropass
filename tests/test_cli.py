@@ -189,3 +189,149 @@ def test_closed_pipe_in_a_real_process(argv: list[str]) -> None:
     err = proc.stderr.read()
     assert proc.wait(timeout=30) == 1
     assert err == b""
+
+
+class TestPassphraseCommand:
+    def test_default_is_six_words_with_spaces(self, capsys: pytest.CaptureFixture[str]) -> None:
+        code, out, err = run(capsys, "passphrase")
+        assert code == 0
+        assert out.endswith("\n") and out.count("\n") == 1
+        assert len(out.split(" ")) == 6
+        assert err == "77.5 bits of entropy: 6 words from the EFF large wordlist (7776 words)\n"
+
+    def test_words_and_separator(self, capsys: pytest.CaptureFixture[str]) -> None:
+        _, out, err = run(capsys, "passphrase", "-w", "5", "--sep", ".")
+        assert len(out.rstrip("\n").split(".")) == 5
+        assert err.startswith("64.6 bits of entropy: 5 words")
+
+    def test_one_word(self, capsys: pytest.CaptureFixture[str]) -> None:
+        _, out, err = run(capsys, "passphrase", "-w", "1")
+        assert " " not in out.rstrip("\n")
+        assert err.startswith("12.9 bits of entropy: 1 word from")
+
+    def test_quiet(self, capsys: pytest.CaptureFixture[str]) -> None:
+        _, out, err = run(capsys, "passphrase", "-q")
+        assert out and err == ""
+
+    @pytest.mark.parametrize(
+        ("argv", "message"),
+        [
+            (["-w", "0"], "words"),
+            (["-w", "101"], "words"),
+            (["-w", "x"], "words"),
+            (["--sep", "-"], "appears in the wordlist"),
+            (["--sep", ""], "separator"),
+        ],
+    )
+    def test_bad_options_are_usage_errors(
+        self, capsys: pytest.CaptureFixture[str], argv: list[str], message: str
+    ) -> None:
+        with pytest.raises(SystemExit) as exc:
+            main(["passphrase", *argv])
+        out, err = capsys.readouterr()
+        assert exc.value.code == 2 and out == ""
+        assert message in err
+
+    def test_help_credits_eff(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit):
+            main(["passphrase", "--help"])
+        out = capsys.readouterr().out
+        assert "Electronic Frontier Foundation" in out and "CC BY 4.0" in out
+
+
+class TestDice:
+    def piped(self, monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+        monkeypatch.setattr("sys.stdin", io.StringIO(text))
+
+    def test_piped_rolls_choose_the_words(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self.piped(monkeypatch, "11111\n6 6 6 6 6\n66665\n")
+        code, out, err = run(capsys, "passphrase", "--dice", "-w", "3")
+        assert code == 0
+        assert out == "abacus zoom zoology\n"
+        assert err.endswith(
+            "38.7 bits of entropy: 3 words from the EFF large wordlist "
+            "(7776 words), assuming fair dice\n"
+        )
+
+    def test_piped_blank_lines_are_skipped(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self.piped(monkeypatch, "\n11111\n\n11111\n")
+        _, out, _ = run(capsys, "passphrase", "--dice", "-w", "2", "-q")
+        assert out == "abacus abacus\n"
+
+    def test_piped_bad_roll_fails_without_echoing_it(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self.piped(monkeypatch, "11111\n12347\n")
+        code, out, err = run(capsys, "passphrase", "--dice", "-w", "2")
+        assert code == 1 and out == ""
+        assert "roll 2" in err and "12347" not in err
+
+    def test_piped_too_few_rolls(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self.piped(monkeypatch, "11111\n")
+        code, out, err = run(capsys, "passphrase", "--dice", "-w", "2")
+        assert code == 1 and out == ""
+        assert "expected 2 rolls" in err
+
+    def test_terminal_rolls_are_read_without_echo_and_reprompted(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr("sys.stdin", _Tty())
+        answers = iter(["66666", "7", "11111"])
+        prompts: list[str] = []
+
+        def fake_getpass(prompt: str = "") -> str:
+            prompts.append(prompt)
+            return next(answers)
+
+        monkeypatch.setattr("entropass.cli.getpass.getpass", fake_getpass)
+        code, out, err = run(capsys, "passphrase", "--dice", "-w", "2")
+        assert code == 0 and out == "zoom abacus\n"
+        assert prompts[0].startswith("Word 1 of 2")
+        assert prompts[1] == prompts[2] and prompts[1].startswith("Word 2 of 2")
+        assert "five dice" in err and "7\n" not in err
+
+    @pytest.mark.parametrize(
+        ("raised", "code", "message"),
+        [(EOFError, 1, "no roll entered"), (KeyboardInterrupt, 130, "")],
+        ids=["ctrl-d", "ctrl-c"],
+    )
+    def test_terminal_quit_exits_without_a_traceback(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        raised: type[BaseException],
+        code: int,
+        message: str,
+    ) -> None:
+        monkeypatch.setattr("sys.stdin", _Tty())
+
+        def quit_prompt(prompt: str = "") -> str:
+            raise raised
+
+        monkeypatch.setattr("entropass.cli.getpass.getpass", quit_prompt)
+        result, out, err = run(capsys, "passphrase", "--dice")
+        assert result == code and out == ""
+        assert message in err and "Traceback" not in err
+
+    def test_piped_bytes_that_are_not_text(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        class Undecodable(io.StringIO):
+            def read(self, size: int | None = -1) -> str:
+                raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+        monkeypatch.setattr("sys.stdin", Undecodable())
+        code, out, err = run(capsys, "passphrase", "--dice", "-w", "1")
+        assert code == 1 and out == ""
+        assert "could not be read as text" in err
+
+
+class _Tty(io.StringIO):
+    def isatty(self) -> bool:
+        return True

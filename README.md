@@ -5,9 +5,8 @@
 A password and passphrase generator for the command line that tells you, honestly and in
 bits, how strong what it made actually is.
 
-> **Work in progress.** Password generation works today. Passphrases, clipboard copy and
-> the PyPI release land in the next pull requests; this README only describes what exists
-> on `main`.
+> **Work in progress.** Passwords and passphrases work today. Clipboard copy and the PyPI
+> release land in the next pull requests; this README only describes what exists on `main`.
 
 ## Usage
 
@@ -22,9 +21,20 @@ oAPDXDd6OP7shVL9
 
 $ entropass password --symbols='!#-_' --exclude-ambiguous -q
 Y-HhEw6UmWqYkFcxtD!P
+
+$ entropass passphrase
+crusader manlike sherry unwelcome vocalize litigate
+77.5 bits of entropy: 6 words from the EFF large wordlist (7776 words)
+
+$ entropass passphrase --dice -w 3 --sep .
+Word 1 of 3: roll five dice and enter them (e.g. 4 1 6 2 3):
+Word 2 of 3: roll five dice and enter them (e.g. 4 1 6 2 3):
+Word 3 of 3: roll five dice and enter them (e.g. 4 1 6 2 3):
+abacus.zoom.humorous
+38.7 bits of entropy: 3 words from the EFF large wordlist (7776 words), assuming fair dice
 ```
 
-The password is the only thing on stdout; the entropy line goes to stderr. So
+The secret is the only thing on stdout; the entropy line goes to stderr. So
 `pw=$(entropass)` captures exactly the password, and you still see its strength. (A pipe
 such as `entropass | pbcopy` also gets the trailing newline.)
 
@@ -35,6 +45,13 @@ such as `entropass | pbcopy` also gets the trailing newline.)
 | `--symbols CHARS` | all ASCII punctuation | for sites that only accept some symbols; write `--symbols=CHARS` if they start with `-` |
 | `--exclude-ambiguous` | off | drops `0 O o 1 l I \|` |
 | `--no-require` | off | by default every enabled class appears at least once |
+| `-q`, `--quiet` | off | no entropy line |
+
+| `passphrase` option | Default | |
+|---|---|---|
+| `-w`, `--words N` | 6 | 1 to 100; each word adds 12.9 bits |
+| `--sep TEXT` | a space | printable ASCII with no lowercase letters and no `-` (see below) |
+| `--dice` | off | use your own dice: five per word, typed without echo, or piped one roll per line |
 | `-q`, `--quiet` | off | no entropy line |
 
 Install from the repository until the PyPI release:
@@ -65,6 +82,22 @@ documents why it was rejected.
 and fails if any module imports `random`. The generator takes its random source as a
 parameter, so tests can inject a seeded one without touching the package.
 
+**The wordlist is EFF's file, byte for byte.** It ships unmodified, so anyone can compare
+it with EFF's copy, and a test pins its SHA-256 and checks that its codes are every roll of
+five dice in order. The test reads the file from the *installed* package, so a wheel that
+left it out would fail CI rather than fail on a user's machine.
+
+**Separators may not contain any character that appears in a word.** Four EFF words contain
+a hyphen (`drop-down`, `felt-tip`, `t-shirt`, `yo-yo`). If `-` were allowed, a passphrase
+could in principle split into words in more than one way, and the entropy would be
+slightly less than claimed. None of the four happens to collide with this list, but the
+rule makes the guarantee hold without having to check every list.
+
+**Dice rolls are read, never passed as options.** In `--dice` mode the rolls *are* the
+passphrase, so they are not accepted as command-line arguments, which other users can see
+in `ps` and which shell history keeps. On a terminal each roll is typed without echo and
+re-prompted if invalid. From a pipe a bad roll fails the run without being echoed back.
+
 **No runtime dependencies.** The CLI is standard-library `argparse`. There is nothing to
 audit beyond this repository.
 
@@ -77,12 +110,15 @@ audit beyond this repository.
   until it exits.
 - A password printed to a terminal stays in its scrollback. Clipboard copy with automatic
   clearing is coming in a later pull request.
+- `--dice` entropy assumes fair dice and honest rolling; entropass cannot check either.
+- `--dice` hides typed rolls only when stdin is a real terminal. Some Windows terminals,
+  such as Git Bash's mintty without winpty, do not present as one, so the rolls are then
+  read as piped input, with echo on and no prompts. Use PowerShell or cmd there.
 - Only printable ASCII is supported. That is deliberate: it survives every console encoding
   and every password form.
 
 ## Planned
 
-- EFF diceware passphrases, including from your own physical dice rolls.
 - Copy to the clipboard and clear it afterwards, only if it still holds the secret.
 - Release to PyPI through GitHub Trusted Publishing.
 
@@ -97,6 +133,12 @@ python3 -m venv .venv
 .venv/bin/ruff check && .venv/bin/ruff format --check && .venv/bin/mypy
 ```
 
-## Licence
+## Credits and licence
 
-MIT — see [LICENSE](https://github.com/kwagyei/entropass/blob/main/LICENSE).
+entropass is MIT-licensed; see [LICENSE](https://github.com/kwagyei/entropass/blob/main/LICENSE).
+
+The passphrase words are the [EFF Large Wordlist for Passphrases](https://www.eff.org/dice)
+by Joseph Bonneau and the Electronic Frontier Foundation, included unmodified under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (EFF's licence for its original
+material, per [eff.org/copyright](https://www.eff.org/copyright)). See
+[EFF-WORDLIST-LICENSE.txt](https://github.com/kwagyei/entropass/blob/main/src/entropass/data/EFF-WORDLIST-LICENSE.txt).
