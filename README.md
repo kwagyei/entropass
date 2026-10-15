@@ -163,6 +163,24 @@ python3 -m venv .venv
 .venv/bin/ruff check && .venv/bin/ruff format --check && .venv/bin/mypy
 ```
 
+### Releasing
+
+Bump `version` in `pyproject.toml` in a pull request, merge it, then tag that commit:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+[`release.yml`](.github/workflows/release.yml) then:
+1. builds the package once and checks that the tag matches the version;
+2. publishes it to TestPyPI;
+3. installs it back from TestPyPI and runs it;
+4. waits for a maintainer to approve the `pypi` environment;
+5. publishes the same files to PyPI and creates the GitHub release.
+
+Publishing uses PyPI Trusted Publishing, so no API token is stored anywhere. Every action
+in both workflows is pinned to a commit SHA, with its version in a comment.
+
 ## Credits and licence
 
 entropass is MIT-licensed; see [LICENSE](https://github.com/kwagyei/entropass/blob/main/LICENSE).
