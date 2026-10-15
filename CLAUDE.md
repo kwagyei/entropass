@@ -38,10 +38,11 @@ wheel fails the tests. Reinstall with `pip install .` after changing `src/`.
 ## Settled decisions
 
 - Exact entropy by inclusion–exclusion; uniform generation by rejection sampling.
-- EFF large wordlist bundled verbatim with a SHA-256 pin; default separator is a space
-  because three words contain hyphens. When it lands, `license` becomes
-  `"MIT AND CC-BY-3.0"` (or `-US`, confirm from EFF) and the licence file joins
-  `license-files`.
+- EFF large wordlist bundled verbatim (`src/entropass/data/`, `.gitattributes` keeps its
+  bytes) with a SHA-256 pin; separators may not contain any word character, default a
+  space (four words contain hyphens). Licence metadata `"MIT AND CC-BY-4.0"`: EFF licenses
+  its original material CC BY 4.0 (eff.org/copyright).
+- Exit codes: 0 ok, 1 bad run-time input (dice) or closed pipe, 2 bad options.
 - Clipboard via OS tools on stdin; a detached `python -m entropass._clearer` holds only a
   SHA-256 digest and clears only if the clipboard is unchanged.
 - Releases: `v*` tag → TestPyPI → PyPI after manual approval, Trusted Publishing, no tokens.

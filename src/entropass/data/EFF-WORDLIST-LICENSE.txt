@@ -1,0 +1,15 @@
+eff_large_wordlist.txt
+
+The EFF Large Wordlist for Passphrases
+by Joseph Bonneau and the Electronic Frontier Foundation
+published at https://www.eff.org/dice
+downloaded from https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+
+It is included unmodified (SHA-256
+addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e).
+
+Original EFF material is licensed under the Creative Commons Attribution 4.0
+International License (CC BY 4.0), per https://www.eff.org/copyright
+Licence text: https://creativecommons.org/licenses/by/4.0/
+
+The rest of entropass is MIT-licensed; see LICENSE.

@@ -32,7 +32,7 @@ def test_words_are_unique_lowercase_and_line_up_with_their_codes() -> None:
 
 
 def test_hyphenated_words_are_why_hyphen_is_not_a_separator() -> None:
-    assert [w for w in load_wordlist() if "-" in w] == ["drop-down", "felt-tip", "t-shirt"]
+    assert [w for w in load_wordlist() if "-" in w] == ["drop-down", "felt-tip", "t-shirt", "yo-yo"]
 
 
 def test_licence_file_ships_with_the_list() -> None:

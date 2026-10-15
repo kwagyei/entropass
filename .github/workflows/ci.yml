@@ -71,3 +71,6 @@ jobs:
           python -m venv /tmp/smoke
           /tmp/smoke/bin/pip install dist/*.whl
           /tmp/smoke/bin/entropass --version
+          /tmp/smoke/bin/entropass password
+          # Proves the wordlist made it into the wheel.
+          /tmp/smoke/bin/entropass passphrase

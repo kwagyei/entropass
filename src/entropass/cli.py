@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import getpass
 import os
 import sys
 from collections.abc import Sequence
@@ -15,10 +16,26 @@ from collections.abc import Sequence
 from entropass import __version__
 from entropass.charsets import CharClass, build_classes
 from entropass.entropy import floor_bits
+from entropass.passphrase import (
+    WORDLIST_SIZE,
+    check_separator,
+    generate_passphrase,
+    load_wordlist,
+    parse_roll,
+)
 from entropass.password import count_passwords, generate_password
 
 MAX_LENGTH = 1024
-COMMANDS = {"password"}
+MAX_WORDS = 100
+COMMANDS = {"password", "passphrase"}
+EFF_CREDIT = (
+    "Words come from the EFF Large Wordlist for Passphrases by Joseph Bonneau and the "
+    "Electronic Frontier Foundation (https://www.eff.org/dice), CC BY 4.0."
+)
+
+
+class InputError(Exception):
+    """Bad input read at run time (not a bad option): exit status 1."""
 
 
 def _length(value: str) -> int:
@@ -29,6 +46,16 @@ def _length(value: str) -> int:
     if not 1 <= length <= MAX_LENGTH:
         raise argparse.ArgumentTypeError(f"length must be between 1 and {MAX_LENGTH}")
     return length
+
+
+def _words(value: str) -> int:
+    try:
+        words = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"words must be a whole number, not {value!r}") from None
+    if not 1 <= words <= MAX_WORDS:
+        raise argparse.ArgumentTypeError(f"words must be between 1 and {MAX_WORDS}")
+    return words
 
 
 def describe(shown: float, length: int, classes: Sequence[CharClass], *, require: bool) -> str:
@@ -66,6 +93,63 @@ def _password(args: argparse.Namespace) -> int:
     if not args.quiet:
         shown = floor_bits(count_passwords(classes, args.length, require=args.require))
         print(describe(shown, args.length, classes, require=args.require), file=sys.stderr)
+    return 0
+
+
+def _read_rolls(count: int) -> list[int]:
+    """Read one roll of five dice per word. The rolls are the passphrase: never echo them."""
+    if sys.stdin.isatty():
+        rolls = []
+        for n in range(1, count + 1):
+            prompt = f"Word {n} of {count}: roll five dice and enter them (e.g. 4 1 6 2 3): "
+            while True:
+                try:
+                    rolls.append(parse_roll(getpass.getpass(prompt)))
+                    break
+                except ValueError as exc:
+                    print(exc, file=sys.stderr)
+        return rolls
+
+    lines = [line for line in sys.stdin.read().splitlines() if line.strip()]
+    if len(lines) != count:
+        raise InputError(f"expected {count} rolls, one per line, but read {len(lines)}")
+    rolls = []
+    for n, line in enumerate(lines, 1):
+        try:
+            rolls.append(parse_roll(line))
+        except ValueError:
+            raise InputError(f"roll {n} is not five dice, each 1 to 6") from None
+    return rolls
+
+
+def _passphrase(args: argparse.Namespace) -> int:
+    parser: argparse.ArgumentParser = args.parser
+    try:
+        check_separator(args.sep)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    if args.dice:
+        try:
+            rolls = _read_rolls(args.words)
+        except InputError as exc:
+            print(f"entropass: error: {exc}", file=sys.stderr)
+            return 1
+        wordlist = load_wordlist()
+        words = [wordlist[i] for i in rolls]
+    else:
+        words = generate_passphrase(args.words)
+
+    print(args.sep.join(words))
+    if not args.quiet:
+        shown = floor_bits(WORDLIST_SIZE**args.words)
+        noun = "word" if args.words == 1 else "words"
+        fair = ", assuming fair dice" if args.dice else ""
+        print(
+            f"{shown:.1f} bits of entropy: {args.words} {noun} from the EFF large wordlist "
+            f"({WORDLIST_SIZE} words){fair}",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -109,6 +193,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pw.add_argument("-q", "--quiet", action="store_true", help="do not print the entropy line")
     pw.set_defaults(run=_password, parser=pw)
+
+    pp = commands.add_parser(
+        "passphrase",
+        help="generate a diceware passphrase",
+        description="Generate a passphrase of random words, or of words from your own dice.",
+        epilog=EFF_CREDIT,
+    )
+    pp.add_argument("-w", "--words", type=_words, default=6, help="number of words (default: 6)")
+    pp.add_argument(
+        "--sep",
+        default=" ",
+        help="text between words (default: a space); it may not contain letters or -",
+    )
+    pp.add_argument(
+        "--dice",
+        action="store_true",
+        help="use your own rolls of five dice per word instead of the computer's randomness",
+    )
+    pp.add_argument("-q", "--quiet", action="store_true", help="do not print the entropy line")
+    pp.set_defaults(run=_passphrase, parser=pp)
     return parser
 
 

@@ -8,10 +8,10 @@ version = "0.1.0.dev0"
 description = "Password and passphrase generator that reports its strength honestly, in bits."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
-license-files = ["LICENSE"]
+license = "MIT AND CC-BY-4.0"
+license-files = ["LICENSE", "src/entropass/data/EFF-WORDLIST-LICENSE.txt"]
 authors = [{ name = "Kwabena Sasu-Boakye", email = "kwabenasasuboakye@gmail.com" }]
-keywords = ["password", "passphrase", "diceware", "entropy", "cli"]
+keywords = ["password", "passphrase", "diceware", "eff-wordlist", "entropy", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
